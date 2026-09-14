@@ -36,6 +36,59 @@ export function formatNumber(count: number): string {
   return count.toString();
 }
 
+export function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function levenshteinDistance(left: string, right: string): number {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    let diagonal = previous[0];
+    previous[0] = leftIndex;
+
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const above = previous[rightIndex];
+      previous[rightIndex] =
+        left[leftIndex - 1] === right[rightIndex - 1]
+          ? diagonal
+          : 1 + Math.min(diagonal, previous[rightIndex], previous[rightIndex - 1]);
+      diagonal = above;
+    }
+  }
+
+  return previous[right.length];
+}
+
+export function matchesSearch(query: string, values: string[]): boolean {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return true;
+
+  const normalizedValues = values.map(normalizeSearchText);
+  if (normalizedValues.some((value) => value.includes(normalizedQuery))) {
+    return true;
+  }
+
+  const queryTokens = normalizedQuery
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+  if (queryTokens.length === 0) return false;
+
+  const valueTokens = normalizedValues.flatMap((value) => value.split(/\s+/));
+  return queryTokens.every((queryToken) => {
+    const maxDistance = queryToken.length >= 6 ? 2 : 1;
+    return valueTokens.some(
+      (valueToken) =>
+        Math.abs(valueToken.length - queryToken.length) <= maxDistance &&
+        levenshteinDistance(queryToken, valueToken) <= maxDistance
+    );
+  });
+}
+
 type ErrorBody = string | string[] | Record<string, unknown>;
 
 function bodyToMessage(body: ErrorBody, fallback: string): string {

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Recurso } from '@/types'
+import type { Materia, Recurso } from '@/types'
 import { recursosService } from '@/services/recursos.service'
-import { cn } from '@/lib/utils'
+import { materiasService } from '@/services/materias.service'
+import { cn, matchesSearch } from '@/lib/utils'
 import ResourceCard from '@/components/ui/ResourceCard'
 import ResourcePreviewModal from '@/components/ui/ResourcePreviewModal'
 
@@ -74,6 +75,11 @@ function ArrowRightIcon({ className }: { className?: string }) {
 export default function HomePage() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
+  const [materias, setMaterias] = useState<Materia[]>([])
+  const [materiasLoading, setMateriasLoading] = useState(true)
+  const [materiasError, setMateriasError] = useState('')
+  const [searchFocused, setSearchFocused] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState(0)
   const [trendingTab, setTrendingTab] =
     useState<(typeof TRENDING_TABS)[number]['id']>('todos')
 
@@ -89,6 +95,43 @@ export default function HomePage() {
     const q = (term ?? searchQuery).trim()
     navigate(q ? `/materias?q=${encodeURIComponent(q)}` : '/materias')
   }
+
+  const suggestions = useMemo(() => {
+    if (!searchQuery.trim()) return []
+    return materias
+      .filter((materia) =>
+        matchesSearch(searchQuery, [
+          materia.nombre,
+          materia.codigo,
+          ...(materia.carreras_list ?? []).map((carrera) => carrera.nombre),
+        ])
+      )
+      .slice(0, 8)
+  }, [materias, searchQuery])
+
+  const selectSuggestion = (materia: Materia) => {
+    setSearchQuery(`${materia.codigo} - ${materia.nombre}`)
+    setSearchFocused(false)
+    navigate(`/materia/${materia.id}`)
+  }
+
+  useEffect(() => {
+    let active = true
+    materiasService
+      .catalogoAll()
+      .then((data) => {
+        if (active) setMaterias(data)
+      })
+      .catch(() => {
+        if (active) setMateriasError('No se pudieron cargar las sugerencias.')
+      })
+      .finally(() => {
+        if (active) setMateriasLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -116,7 +159,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-surface text-on-surface">
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-surface via-surface-container-low to-surface">
+      <section className="relative z-20 overflow-visible bg-gradient-to-b from-surface via-surface-container-low to-surface">
         {/* SVG grid pattern */}
         <div
           aria-hidden="true"
@@ -143,15 +186,35 @@ export default function HomePage() {
             </p>
 
             {/* Omnibox */}
-            <div className="mx-auto mt-8 max-w-2xl">
-              <div className="flex items-center gap-2 rounded-full border border-surface-container-high bg-surface-card p-2 shadow-lg shadow-primary-container/5">
+            <div className="relative z-20 mx-auto mt-8 max-w-2xl">
+              <div className="relative z-20 flex items-center gap-2 rounded-full border border-surface-container-high bg-surface-card p-2 shadow-lg shadow-primary-container/5">
                 <div className="flex flex-1 items-center gap-3 pl-3">
                   <SearchIcon className="h-5 w-5 shrink-0 text-outline" />
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value)
+                      setSelectedSuggestion(0)
+                    }}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
                     onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown' && suggestions.length > 0) {
+                        e.preventDefault()
+                        setSelectedSuggestion((index) =>
+                          Math.min(index + 1, suggestions.length - 1)
+                        )
+                      }
+                      if (e.key === 'ArrowUp' && suggestions.length > 0) {
+                        e.preventDefault()
+                        setSelectedSuggestion((index) => Math.max(index - 1, 0))
+                      }
+                      if (e.key === 'Enter' && suggestions[selectedSuggestion]) {
+                        e.preventDefault()
+                        selectSuggestion(suggestions[selectedSuggestion])
+                        return
+                      }
                       if (e.key === 'Enter') {
                         e.preventDefault()
                         handleSearch()
@@ -172,6 +235,51 @@ export default function HomePage() {
                   Buscar
                 </button>
               </div>
+              {searchFocused && searchQuery.trim() && (
+                <div className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-surface-container-high bg-surface-card text-left shadow-xl">
+                  {materiasLoading && materias.length === 0 ? (
+                    <p className="flex items-center gap-2 px-5 py-4 text-body-sm text-on-surface-variant">
+                      <span className="material-symbols-outlined animate-spin text-[18px] text-secondary">
+                        autorenew
+                      </span>
+                      Cargando materias...
+                    </p>
+                  ) : materiasError && materias.length === 0 ? (
+                    <p className="px-5 py-4 text-body-sm text-error">{materiasError}</p>
+                  ) : suggestions.length === 0 ? (
+                    <p className="px-5 py-4 text-body-sm text-on-surface-variant">
+                      No se encontraron materias
+                    </p>
+                  ) : (
+                    <ul role="listbox">
+                      {suggestions.map((materia, index) => (
+                        <li key={materia.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={index === selectedSuggestion}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selectSuggestion(materia)}
+                            className={cn(
+                              'flex w-full items-center justify-between gap-3 px-5 py-3 text-left transition-colors',
+                              index === selectedSuggestion
+                                ? 'bg-secondary/10 text-secondary'
+                                : 'text-on-surface hover:bg-surface'
+                            )}
+                          >
+                            <span className="min-w-0 truncate text-body-md font-medium">
+                              {materia.nombre}
+                            </span>
+                            <span className="shrink-0 text-label-sm text-outline">
+                              {materia.codigo}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                 <span className="text-body-sm text-on-surface-variant">
                   Explorar:

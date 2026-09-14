@@ -1,9 +1,8 @@
 ﻿import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import type { Materia, Recurso, Facultad } from '@/types'
+import type { Materia, Recurso } from '@/types'
 import { materiasService } from '@/services/materias.service'
 import { recursosService } from '@/services/recursos.service'
-import { facultadesService } from '@/services/facultades.service'
 import { cn } from '@/lib/utils'
 import ResourceCard from '@/components/ui/ResourceCard'
 import ResourcePreviewModal from '@/components/ui/ResourcePreviewModal'
@@ -12,10 +11,9 @@ import { useDebounce } from '@/hooks/useDebounce'
 
 const CATEGORY_TABS = [
   { id: 'todos', label: 'Todos los recursos' },
-  { id: 'prueba_parcial', label: 'Exámenes Parciales' },
-  { id: 'prueba_final', label: 'Exámenes Finales' },
-  { id: 'nota', label: 'Talleres y Guías' },
-  { id: 'proyecto', label: 'Proyectos y Laboratorios' },
+  { id: 'prueba', label: 'Exámenes' },
+  { id: 'nota', label: 'Apuntes y Guías' },
+  { id: 'proyecto', label: 'Proyectos' },
 ] as const
 
 type CategoryId = (typeof CATEGORY_TABS)[number]['id']
@@ -34,7 +32,6 @@ export default function MateriaPage() {
   const materiaId = Number(id)
 
   const [materia, setMateria] = useState<Materia | null>(null)
-  const [facultad, setFacultad] = useState<Facultad | null>(null)
   const [materiaLoading, setMateriaLoading] = useState(true)
 
   const [search, setSearch] = useState('')
@@ -69,16 +66,6 @@ export default function MateriaPage() {
       active = false
     }
   }, [materiaId])
-
-  // Fetch facultades for breadcrumb
-  useEffect(() => {
-    facultadesService
-      .list()
-      .then((data) => {
-        setFacultad(data.results[0] ?? null)
-      })
-      .catch(() => setFacultad(null))
-  }, [])
 
   // Reset page on filter change
   useEffect(() => {
@@ -202,6 +189,10 @@ export default function MateriaPage() {
     )
   }
 
+  const facultadNombre = materia.carreras_list?.find(
+    (carrera) => carrera.facultad_nombre
+  )?.facultad_nombre
+
   return (
     <main className="min-h-screen bg-surface text-on-surface">
       {/* Breadcrumb */}
@@ -212,14 +203,12 @@ export default function MateriaPage() {
               Inicio
             </Link>
           </li>
-          <li aria-hidden="true">/</li>
-          <li>
-            <Link to="/" className="hover:text-secondary">
-              Inicio
-            </Link>
-          </li>
-          <li aria-hidden="true">/</li>
-          <li className="text-on-surface">{facultad?.nombre ?? 'Facultad'}</li>
+          {facultadNombre && (
+            <>
+              <li aria-hidden="true">/</li>
+              <li className="text-on-surface">{facultadNombre}</li>
+            </>
+          )}
           <li aria-hidden="true">/</li>
           <li className="font-medium text-on-surface">{materia.nombre}</li>
         </ol>

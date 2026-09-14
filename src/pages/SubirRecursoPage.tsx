@@ -32,23 +32,82 @@ const CATEGORIA_LABEL: Record<string, string> = {
   proyecto: 'Proyecto / Laboratorio',
 }
 
+const DRAFT_KEY = 'coursehub_subir_draft'
+
+interface SubirDraft {
+  materiaId: string
+  coleccionId: string
+  categoria: string
+  tipoRecurso: string
+  descripcion: string
+  consejoEstudio: string
+  linkUrl: string
+  materiaQuery: string
+  materiaSeleccionada: Materia | null
+}
+
+const EMPTY_DRAFT: SubirDraft = {
+  materiaId: '',
+  coleccionId: '',
+  categoria: 'nota',
+  tipoRecurso: 'pdf',
+  descripcion: '',
+  consejoEstudio: '',
+  linkUrl: '',
+  materiaQuery: '',
+  materiaSeleccionada: null,
+}
+
+function readDraft(): SubirDraft {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY)
+    if (!raw) return EMPTY_DRAFT
+    const d = JSON.parse(raw) as Partial<SubirDraft>
+    const materiaSeleccionada = d.materiaSeleccionada ?? null
+    return {
+      materiaId: d.materiaId ?? '',
+      coleccionId: d.coleccionId ?? '',
+      categoria: d.categoria ?? 'nota',
+      tipoRecurso: d.tipoRecurso ?? 'pdf',
+      descripcion: d.descripcion ?? '',
+      consejoEstudio: d.consejoEstudio ?? '',
+      linkUrl: d.linkUrl ?? '',
+      materiaQuery: materiaSeleccionada
+        ? (d.materiaQuery ??
+          `${materiaSeleccionada.codigo} — ${materiaSeleccionada.nombre}`)
+        : (d.materiaQuery ?? ''),
+      materiaSeleccionada,
+    }
+  } catch {
+    return EMPTY_DRAFT
+  }
+}
+
 export default function SubirRecursoPage() {
   const navigate = useNavigate()
-  const { refreshProfile } = useAuth()
+  const { isAuthenticated, refreshProfile } = useAuth()
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [draft] = useState<SubirDraft>(readDraft)
 
   const [materias, setMaterias] = useState<Materia[]>([])
   const [colecciones, setColecciones] = useState<Coleccion[]>([])
   const [materiasLoading, setMateriasLoading] = useState(true)
 
-  const [materiaId, setMateriaId] = useState('')
-  const [coleccionId, setColeccionId] = useState('')
-  const [categoria, setCategoria] = useState<string>('nota')
-  const [tipoRecurso, setTipoRecurso] = useState<string>('pdf')
-  const [descripcion, setDescripcion] = useState('')
-  const [consejoEstudio, setConsejoEstudio] = useState('')
+  const [materiaQuery, setMateriaQuery] = useState(draft.materiaQuery)
+  const [materiaSeleccionada, setMateriaSeleccionada] =
+    useState<Materia | null>(draft.materiaSeleccionada)
+  const [materiaOpen, setMateriaOpen] = useState(false)
+  const materiaRef = useRef<HTMLDivElement>(null)
+
+  const [materiaId, setMateriaId] = useState(draft.materiaId)
+  const [coleccionId, setColeccionId] = useState(draft.coleccionId)
+  const [categoria, setCategoria] = useState<string>(draft.categoria)
+  const [tipoRecurso, setTipoRecurso] = useState<string>(draft.tipoRecurso)
+  const [descripcion, setDescripcion] = useState(draft.descripcion)
+  const [consejoEstudio, setConsejoEstudio] = useState(draft.consejoEstudio)
   const [file, setFile] = useState<File | null>(null)
-  const [linkUrl, setLinkUrl] = useState('')
+  const [linkUrl, setLinkUrl] = useState(draft.linkUrl)
 
   const [isDragging, setIsDragging] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -56,12 +115,44 @@ export default function SubirRecursoPage() {
   const [success, setSuccess] = useState(false)
   const [recursoCreado, setRecursoCreado] = useState<RecursoCreado | null>(null)
 
+  const persistDraft = () => {
+    sessionStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        materiaId,
+        coleccionId,
+        categoria,
+        tipoRecurso,
+        descripcion,
+        consejoEstudio,
+        linkUrl,
+        materiaQuery,
+        materiaSeleccionada,
+      })
+    )
+  }
+
+  const clearDraft = () => {
+    sessionStorage.removeItem(DRAFT_KEY)
+  }
+
+  // Cierra el dropdown de materias al hacer clic fuera.
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (materiaRef.current && !materiaRef.current.contains(e.target as Node)) {
+        setMateriaOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
+
   useEffect(() => {
     let active = true
     materiasService
-      .catalogo()
+      .catalogoAll()
       .then((data) => {
-        if (active) setMaterias(data.results)
+        if (active) setMaterias(data)
       })
       .catch(() => {
         if (active) setMaterias([])
@@ -129,6 +220,12 @@ export default function SubirRecursoPage() {
     setError('')
     setSuccess(false)
 
+    if (!isAuthenticated) {
+      persistDraft()
+      navigate('/login', { state: { from: '/subir' } })
+      return
+    }
+
     if (!materiaId) {
       setError('Selecciona una materia.')
       return
@@ -170,6 +267,7 @@ export default function SubirRecursoPage() {
 
       setRecursoCreado(creado)
       setSuccess(true)
+      clearDraft()
       void refreshProfile().catch(() => undefined)
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Error al subir el recurso. Intenta de nuevo.'))
@@ -181,7 +279,11 @@ export default function SubirRecursoPage() {
   const handleSubirOtro = () => {
     setSuccess(false)
     setRecursoCreado(null)
+    clearDraft()
     setMateriaId('')
+    setMateriaQuery('')
+    setMateriaSeleccionada(null)
+    setMateriaOpen(false)
     setColeccionId('')
     setCategoria('nota')
     setTipoRecurso('pdf')
@@ -191,6 +293,35 @@ export default function SubirRecursoPage() {
     setLinkUrl('')
     setError('')
   }
+
+  const handleMateriaQueryChange = (value: string) => {
+    setMateriaQuery(value)
+    setMateriaId('')
+    setMateriaSeleccionada(null)
+    setMateriaOpen(true)
+  }
+
+  const handleSelectMateria = (m: Materia) => {
+    setMateriaSeleccionada(m)
+    setMateriaId(String(m.id))
+    setMateriaQuery(`${m.codigo} — ${m.nombre}`)
+    setMateriaOpen(false)
+  }
+
+  const clearMateria = () => {
+    setMateriaQuery('')
+    setMateriaId('')
+    setMateriaSeleccionada(null)
+    setMateriaOpen(false)
+  }
+
+  const q = materiaQuery.trim().toLowerCase()
+  const filteredMaterias = materias.filter(
+    (m) =>
+      !q ||
+      m.nombre.toLowerCase().includes(q) ||
+      m.codigo.toLowerCase().includes(q)
+  )
 
   return (
     <main className="min-h-screen bg-surface px-4 py-8">
@@ -310,22 +441,82 @@ export default function SubirRecursoPage() {
               >
                 Materia <span className="text-error">*</span>
               </label>
-              {materiasLoading ? (
-                <div className="h-11 animate-pulse rounded-xl bg-surface-container-high" />
-              ) : (
-                <select
-                  id="materia"
-                  value={materiaId}
-                  onChange={(e) => setMateriaId(e.target.value)}
-                  className="w-full rounded-xl border border-border-subtle bg-surface px-4 py-3 text-body-md text-on-surface outline-none transition-colors focus:border-secondary"
-                >
-                  <option value="">Selecciona una materia</option>
-                  {materias.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.codigo ? `${m.codigo} - ` : ''}{m.nombre}
-                    </option>
-                  ))}
-                </select>
+              <div ref={materiaRef} className="relative">
+                <div className="relative">
+                  <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[20px] text-outline">
+                    search
+                  </span>
+                  {materiasLoading ? (
+                    <div className="h-11 animate-pulse rounded-xl bg-surface-container-high" />
+                  ) : (
+                    <>
+                      <input
+                        id="materia"
+                        type="text"
+                        role="combobox"
+                        aria-expanded={materiaOpen}
+                        aria-autocomplete="list"
+                        autoComplete="off"
+                        value={materiaQuery}
+                        onChange={(e) => handleMateriaQueryChange(e.target.value)}
+                        onFocus={() => setMateriaOpen(true)}
+                        placeholder="Buscar materia por código o nombre..."
+                        className="w-full rounded-xl border border-border-subtle bg-surface py-3 pl-10 pr-10 text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant focus:border-secondary"
+                      />
+                      {materiaQuery && !materiaSeleccionada && (
+                        <button
+                          type="button"
+                          onClick={clearMateria}
+                          aria-label="Limpiar búsqueda de materia"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-outline transition-colors hover:text-on-surface"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">
+                            close
+                          </span>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {materiaOpen && !materiaSeleccionada && (
+                  <div className="absolute z-10 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border-subtle bg-surface-card shadow-lg">
+                    {materias.length === 0 ? (
+                      <p className="px-4 py-3 text-body-sm text-on-surface-variant">
+                        No se pudieron cargar las materias.
+                      </p>
+                    ) : filteredMaterias.length === 0 ? (
+                      <p className="px-4 py-3 text-body-sm text-on-surface-variant">
+                        Sin resultados para "{materiaQuery}".
+                      </p>
+                    ) : (
+                      <ul>
+                        {filteredMaterias.map((m) => (
+                          <li key={m.id}>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectMateria(m)}
+                              className="flex w-full items-baseline justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-surface"
+                            >
+                              <span className="min-w-0 truncate text-body-md font-medium text-on-surface">
+                                {m.nombre}
+                              </span>
+                              <span className="shrink-0 text-label-sm text-outline">
+                                {m.codigo}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+              {materiaSeleccionada && (
+                <p className="mt-1.5 text-body-sm text-secondary">
+                  <span className="font-semibold">{materiaSeleccionada.codigo}</span>{' '}
+                  · {materiaSeleccionada.nombre}
+                </p>
               )}
             </div>
 

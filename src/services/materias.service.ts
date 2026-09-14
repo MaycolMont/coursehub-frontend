@@ -6,6 +6,7 @@ interface MateriaListParams {
   facultad_id?: number;
   activo?: boolean;
   search?: string;
+  page?: number;
 }
 
 export const materiasService = {
@@ -17,11 +18,25 @@ export const materiasService = {
     return data;
   },
 
-  async catalogo() {
+  async catalogo(params?: MateriaListParams) {
     const { data } = await api.get<PaginatedResponse<Materia>>(
-      "/api/materias/catalogo/"
+      "/api/materias/catalogo/",
+      { params }
     );
     return data;
+  },
+
+  async catalogoAll(params?: Omit<MateriaListParams, "page">) {
+    const all: Materia[] = [];
+    let page = 1;
+    let next: string | null;
+    do {
+      const data = await this.catalogo({ ...params, page });
+      all.push(...data.results);
+      next = data.next;
+      page += 1;
+    } while (next && page <= 100);
+    return all;
   },
 
   async getById(id: number) {

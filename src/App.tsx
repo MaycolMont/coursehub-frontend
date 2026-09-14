@@ -57,11 +57,7 @@ function App() {
             />
             <Route
               path="/subir"
-              element={
-                <ProtectedRoute>
-                  <SubirRecursoPage />
-                </ProtectedRoute>
-              }
+              element={<SubirRecursoPage />}
             />
 
             {/* 404 */}

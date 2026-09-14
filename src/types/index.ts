@@ -53,7 +53,8 @@ export interface Materia {
   codigo: string
   nombre: string
   activo: boolean
-  carreras_list?: Array<{ id: number; nombre: string }>
+  facultad?: number
+  carreras_list?: Array<{ id: number; nombre: string; facultad_nombre?: string }>
   recursos_count?: number
 }
 

@@ -1,4 +1,12 @@
-import { useEffect, useState, useRef, type FormEvent, type DragEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type DragEvent,
+} from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import type { Materia, Coleccion, Recurso } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
@@ -6,6 +14,11 @@ import { materiasService } from '@/services/materias.service'
 import { coleccionesService } from '@/services/colecciones.service'
 import { api } from '@/lib/api'
 import { cn, extractErrorMessage } from '@/lib/utils'
+import {
+  loadDraftFile,
+  removeDraftFile,
+  saveDraftFile,
+} from '@/lib/draftFile'
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024
 
@@ -90,11 +103,12 @@ export default function SubirRecursoPage() {
 
   const [draft] = useState<SubirDraft>(readDraft)
 
-  const [materias, setMaterias] = useState<Materia[]>([])
+  const [data, setData] = useState<Materia[]>([])
   const [colecciones, setColecciones] = useState<Coleccion[]>([])
-  const [materiasLoading, setMateriasLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
+  const [materiasError, setMateriasError] = useState('')
 
-  const [materiaQuery, setMateriaQuery] = useState(draft.materiaQuery)
+  const [searchTerm, setSearchTerm] = useState(draft.materiaQuery)
   const [materiaSeleccionada, setMateriaSeleccionada] =
     useState<Materia | null>(draft.materiaSeleccionada)
   const [materiaOpen, setMateriaOpen] = useState(false)
@@ -115,7 +129,7 @@ export default function SubirRecursoPage() {
   const [success, setSuccess] = useState(false)
   const [recursoCreado, setRecursoCreado] = useState<RecursoCreado | null>(null)
 
-  const persistDraft = () => {
+  const persistDraft = useCallback(async () => {
     sessionStorage.setItem(
       DRAFT_KEY,
       JSON.stringify({
@@ -126,15 +140,61 @@ export default function SubirRecursoPage() {
         descripcion,
         consejoEstudio,
         linkUrl,
-        materiaQuery,
+        materiaQuery: searchTerm,
         materiaSeleccionada,
       })
     )
-  }
 
-  const clearDraft = () => {
+    // El archivo no cabe en sessionStorage: se guarda en IndexedDB para que
+    // no se pierda al iniciar sesión, registrarse o refrescar la página.
+    if (tipoRecurso === 'link') {
+      await removeDraftFile().catch(() => undefined)
+    } else if (file) {
+      await saveDraftFile(file).catch(() => undefined)
+    } else {
+      await removeDraftFile().catch(() => undefined)
+    }
+  }, [
+    materiaId,
+    coleccionId,
+    categoria,
+    tipoRecurso,
+    descripcion,
+    consejoEstudio,
+    linkUrl,
+    searchTerm,
+    materiaSeleccionada,
+    file,
+  ])
+
+  const clearDraft = useCallback(() => {
     sessionStorage.removeItem(DRAFT_KEY)
-  }
+    void removeDraftFile().catch(() => undefined)
+  }, [])
+
+  // Autosave con debounce: el progreso del formulario persiste solo, cubriendo
+  // navegación, refresh o cierre parcial de la sesión.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void persistDraft()
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [persistDraft])
+
+  // Restaura el archivo del borrador (IndexedDB) solo si existe el borrador de
+  // texto en sessionStorage (evita traer archivos huérfanos de otras sesiones).
+  useEffect(() => {
+    if (sessionStorage.getItem(DRAFT_KEY) == null) return
+    let active = true
+    loadDraftFile()
+      .then((storedFile) => {
+        if (active && storedFile) setFile(storedFile)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Cierra el dropdown de materias al hacer clic fuera.
   useEffect(() => {
@@ -149,16 +209,17 @@ export default function SubirRecursoPage() {
 
   useEffect(() => {
     let active = true
+    // Carga única del dataset en segundo plano; no bloquea el formulario.
     materiasService
       .catalogoAll()
-      .then((data) => {
-        if (active) setMaterias(data)
+      .then((result) => {
+        if (active) setData(result)
       })
       .catch(() => {
-        if (active) setMaterias([])
+        if (active) setMateriasError('No se pudieron cargar las materias.')
       })
       .finally(() => {
-        if (active) setMateriasLoading(false)
+        if (active) setLoading(false)
       })
     return () => {
       active = false
@@ -221,7 +282,7 @@ export default function SubirRecursoPage() {
     setSuccess(false)
 
     if (!isAuthenticated) {
-      persistDraft()
+      await persistDraft()
       navigate('/login', { state: { from: '/subir' } })
       return
     }
@@ -281,7 +342,7 @@ export default function SubirRecursoPage() {
     setRecursoCreado(null)
     clearDraft()
     setMateriaId('')
-    setMateriaQuery('')
+    setSearchTerm('')
     setMateriaSeleccionada(null)
     setMateriaOpen(false)
     setColeccionId('')
@@ -295,7 +356,7 @@ export default function SubirRecursoPage() {
   }
 
   const handleMateriaQueryChange = (value: string) => {
-    setMateriaQuery(value)
+    setSearchTerm(value)
     setMateriaId('')
     setMateriaSeleccionada(null)
     setMateriaOpen(true)
@@ -304,24 +365,31 @@ export default function SubirRecursoPage() {
   const handleSelectMateria = (m: Materia) => {
     setMateriaSeleccionada(m)
     setMateriaId(String(m.id))
-    setMateriaQuery(`${m.codigo} — ${m.nombre}`)
+    setSearchTerm(`${m.codigo} — ${m.nombre}`)
     setMateriaOpen(false)
   }
 
   const clearMateria = () => {
-    setMateriaQuery('')
+    setSearchTerm('')
     setMateriaId('')
     setMateriaSeleccionada(null)
     setMateriaOpen(false)
   }
 
-  const q = materiaQuery.trim().toLowerCase()
-  const filteredMaterias = materias.filter(
-    (m) =>
-      !q ||
-      m.nombre.toLowerCase().includes(q) ||
-      m.codigo.toLowerCase().includes(q)
-  )
+  const q = searchTerm.trim().toLowerCase()
+  // Filtrado local (in-memory): se deriva de searchTerm + data con .filter().
+  // Ninguna petición al backend ocurre mientras el usuario escribe.
+  const filteredMaterias = useMemo(() => {
+    if (!q) return data
+    return data.filter(
+      (m) =>
+        m.nombre.toLowerCase().includes(q) ||
+        m.codigo.toLowerCase().includes(q) ||
+        (m.carreras_list ?? []).some((c) =>
+          c.nombre.toLowerCase().includes(q)
+        )
+    )
+  }, [data, q])
 
   return (
     <main className="min-h-screen bg-surface px-4 py-8">
@@ -446,48 +514,56 @@ export default function SubirRecursoPage() {
                   <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[20px] text-outline">
                     search
                   </span>
-                  {materiasLoading ? (
-                    <div className="h-11 animate-pulse rounded-xl bg-surface-container-high" />
-                  ) : (
-                    <>
-                      <input
-                        id="materia"
-                        type="text"
-                        role="combobox"
-                        aria-expanded={materiaOpen}
-                        aria-autocomplete="list"
-                        autoComplete="off"
-                        value={materiaQuery}
-                        onChange={(e) => handleMateriaQueryChange(e.target.value)}
-                        onFocus={() => setMateriaOpen(true)}
-                        placeholder="Buscar materia por código o nombre..."
-                        className="w-full rounded-xl border border-border-subtle bg-surface py-3 pl-10 pr-10 text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant focus:border-secondary"
-                      />
-                      {materiaQuery && !materiaSeleccionada && (
-                        <button
-                          type="button"
-                          onClick={clearMateria}
-                          aria-label="Limpiar búsqueda de materia"
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-outline transition-colors hover:text-on-surface"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">
-                            close
-                          </span>
-                        </button>
-                      )}
-                    </>
-                  )}
+                  <input
+                    id="materia"
+                    type="text"
+                    role="combobox"
+                    aria-expanded={materiaOpen}
+                    aria-autocomplete="list"
+                    autoComplete="off"
+                    value={searchTerm}
+                    onChange={(e) => handleMateriaQueryChange(e.target.value)}
+                    onFocus={() => setMateriaOpen(true)}
+                    placeholder="Buscar materia por código o nombre..."
+                    className="w-full rounded-xl border border-border-subtle bg-surface py-3 pl-10 pr-10 text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant focus:border-secondary"
+                  />
+                  {loading ? (
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                      <span className="material-symbols-outlined animate-spin text-[20px] text-secondary">
+                        autorenew
+                      </span>
+                    </span>
+                  ) : searchTerm && !materiaSeleccionada ? (
+                    <button
+                      type="button"
+                      onClick={clearMateria}
+                      aria-label="Limpiar búsqueda de materia"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-outline transition-colors hover:text-on-surface"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">
+                        close
+                      </span>
+                    </button>
+                  ) : null}
                 </div>
 
                 {materiaOpen && !materiaSeleccionada && (
                   <div className="absolute z-10 mt-2 max-h-72 w-full overflow-y-auto rounded-xl border border-border-subtle bg-surface-card shadow-lg">
-                    {materias.length === 0 ? (
-                      <p className="px-4 py-3 text-body-sm text-on-surface-variant">
-                        No se pudieron cargar las materias.
+                    {loading && data.length === 0 ? (
+                      <p className="flex items-center gap-2 px-4 py-3 text-body-sm text-on-surface-variant">
+                        <span className="material-symbols-outlined animate-spin text-[18px] text-secondary">
+                          autorenew
+                        </span>
+                        Cargando catálogo de materias...
+                      </p>
+                    ) : materiasError && data.length === 0 ? (
+                      <p className="px-4 py-3 text-body-sm text-error">
+                        {materiasError}
                       </p>
                     ) : filteredMaterias.length === 0 ? (
                       <p className="px-4 py-3 text-body-sm text-on-surface-variant">
-                        Sin resultados para "{materiaQuery}".
+                        No se encontraron materias
+                        {searchTerm.trim() ? ` para "${searchTerm.trim()}"` : ''}.
                       </p>
                     ) : (
                       <ul>

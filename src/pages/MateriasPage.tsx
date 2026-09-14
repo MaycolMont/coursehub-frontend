@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { Facultad, Materia } from '@/types'
 import { facultadesService } from '@/services/facultades.service'
 import { materiasService } from '@/services/materias.service'
-import { useDebounce } from '@/hooks/useDebounce'
 import { formatNumber } from '@/lib/utils'
 
 export default function MateriasPage() {
@@ -12,11 +11,10 @@ export default function MateriasPage() {
   const activeFacultad = searchParams.get('facultad') ?? ''
 
   const [searchInput, setSearchInput] = useState(query)
-  const debouncedSearch = useDebounce(searchInput, 300)
-
   const [facultades, setFacultades] = useState<Facultad[]>([])
-  const [materias, setMaterias] = useState<Materia[]>([])
+  const [data, setData] = useState<Materia[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     facultadesService
@@ -28,21 +26,13 @@ export default function MateriasPage() {
   useEffect(() => {
     let active = true
 
-    const params: { search?: string; facultad_id?: number } = {}
-    if (debouncedSearch.trim()) {
-      params.search = debouncedSearch.trim()
-    }
-    if (activeFacultad) {
-      params.facultad_id = Number(activeFacultad)
-    }
-
     materiasService
-      .list(params)
-      .then((data) => {
-        if (active) setMaterias(data.results)
+      .catalogoAll()
+      .then((items) => {
+        if (active) setData(items)
       })
       .catch(() => {
-        if (active) setMaterias([])
+        if (active) setError('No se pudieron cargar las materias.')
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -51,14 +41,14 @@ export default function MateriasPage() {
     return () => {
       active = false
     }
-  }, [debouncedSearch, activeFacultad])
+  }, [])
 
   useEffect(() => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
-        if (debouncedSearch.trim()) {
-          next.set('q', debouncedSearch.trim())
+        if (searchInput.trim()) {
+          next.set('q', searchInput.trim())
         } else {
           next.delete('q')
         }
@@ -66,7 +56,23 @@ export default function MateriasPage() {
       },
       { replace: true }
     )
-  }, [debouncedSearch, setSearchParams])
+  }, [searchInput, setSearchParams])
+
+  const materias = useMemo(() => {
+    const normalizedSearch = searchInput.trim().toLowerCase()
+    return data.filter((materia) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        materia.nombre.toLowerCase().includes(normalizedSearch) ||
+        materia.codigo.toLowerCase().includes(normalizedSearch) ||
+        (materia.carreras_list ?? []).some((carrera) =>
+          carrera.nombre.toLowerCase().includes(normalizedSearch)
+        )
+      const matchesFacultad =
+        !activeFacultad || String(materia.facultad) === activeFacultad
+      return matchesSearch && matchesFacultad
+    })
+  }, [activeFacultad, data, searchInput])
 
   const handleFacultadChange = (value: string) => {
     setSearchParams((prev) => {
@@ -160,6 +166,8 @@ export default function MateriasPage() {
               />
             ))}
           </div>
+        ) : error ? (
+          <div className="py-20 text-center text-body-md text-error">{error}</div>
         ) : materias.length === 0 ? (
           <div className="py-20 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-container-low">

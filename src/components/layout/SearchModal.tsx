@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
-import { useDebounce } from '@/hooks/useDebounce'
 import { materiasService } from '@/services/materias.service'
 import type { Materia } from '@/types'
 
@@ -12,13 +11,12 @@ interface SearchModalProps {
 
 export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<Materia[]>([])
+  const [data, setData] = useState<Materia[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
-
-  const debouncedQuery = useDebounce(query, 300)
 
   useEffect(() => {
     if (isOpen) {
@@ -28,35 +26,35 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
   }, [isOpen])
 
   useEffect(() => {
-    if (!debouncedQuery.trim()) return
-
-    let cancelled = false
-
-    const search = async () => {
-      setIsLoading(true)
-      try {
-        const data = await materiasService.list({ search: debouncedQuery.trim() })
-        if (!cancelled) {
-          setResults(data.results)
-          setSelectedIndex(0)
-        }
-      } catch {
-        if (!cancelled) {
-          setResults([])
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    search()
-
+    let active = true
+    materiasService
+      .catalogoAll()
+      .then((items) => {
+        if (active) setData(items)
+      })
+      .catch(() => {
+        if (active) setError('No se pudieron cargar las materias.')
+      })
+      .finally(() => {
+        if (active) setIsLoading(false)
+      })
     return () => {
-      cancelled = true
+      active = false
     }
-  }, [debouncedQuery])
+  }, [])
+
+  const results = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase()
+    if (!normalizedQuery) return []
+    return data.filter(
+      (materia) =>
+        materia.nombre.toLowerCase().includes(normalizedQuery) ||
+        materia.codigo.toLowerCase().includes(normalizedQuery) ||
+        (materia.carreras_list ?? []).some((carrera) =>
+          carrera.nombre.toLowerCase().includes(normalizedQuery)
+        )
+    )
+  }, [data, query])
 
   const handleSelect = useCallback(
     (id: number) => {
@@ -111,7 +109,10 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
             type="text"
             placeholder="Buscar materias..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setSelectedIndex(0)
+            }}
             className="flex-1 bg-transparent text-body-lg text-on-surface placeholder:text-outline outline-none"
           />
           <kbd className="hidden sm:inline-flex items-center rounded-md border border-border-subtle bg-surface px-1.5 py-0.5 text-label-sm text-outline">
@@ -120,7 +121,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
         </div>
 
         <div className="max-h-80 overflow-y-auto">
-          {isLoading && (
+          {isLoading && data.length === 0 && (
             <div className="flex items-center justify-center py-8">
               <span className="material-symbols-outlined animate-spin text-secondary">
                 autorenew
@@ -128,13 +129,17 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
             </div>
           )}
 
-          {!isLoading && debouncedQuery.trim() && results.length === 0 && (
+          {error && data.length === 0 && (
+            <p className="py-8 text-center text-body-md text-error">{error}</p>
+          )}
+
+          {!isLoading && !error && query.trim() && results.length === 0 && (
             <p className="py-8 text-center text-body-md text-outline">
               No se encontraron materias
             </p>
           )}
 
-          {!isLoading &&
+          {!error &&
             results.map((materia, index) => (
               <button
                 key={materia.id}
@@ -160,7 +165,7 @@ export function SearchModal({ isOpen, onClose }: SearchModalProps) {
               </button>
             ))}
 
-          {!debouncedQuery.trim() && !isLoading && (
+          {!query.trim() && !isLoading && !error && (
             <div className="py-8 text-center">
               <span className="material-symbols-outlined text-[40px] text-outline-variant mb-2 block">
                 search

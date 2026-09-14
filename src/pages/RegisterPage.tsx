@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { extractErrorMessage } from '@/lib/utils'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { register, login } = useAuth()
+
+  const returnTo = (location.state as { from?: string })?.from ?? '/'
 
   const [correo, setCorreo] = useState('')
   const [pseudonimo, setPseudonimo] = useState('')
@@ -45,7 +48,7 @@ export default function RegisterPage() {
     try {
       await register(correo.trim(), pseudonimo.trim(), password)
       await login(correo.trim(), password)
-      navigate('/', { replace: true })
+      navigate(returnTo, { replace: true })
     } catch (err: unknown) {
       setError(extractErrorMessage(err, 'Error al crear la cuenta. Intenta de nuevo.'))
     } finally {

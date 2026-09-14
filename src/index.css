@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --color-inverse-primary: #aec7f6;
+  --color-primary-fixed: #d6e3ff;
+  --color-on-primary: #ffffff;
+  --color-on-tertiary-fixed: #341100;
+  --color-secondary-container: #316bf3;
+  --color-on-error: #ffffff;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #fefcff;
+  --color-border-subtle: #e2e8f0;
+  --color-surface-container-lowest: #ffffff;
+  --color-secondary-fixed-dim: #b4c5ff;
+  --color-on-tertiary-fixed-variant: #6c391d;
+  --color-secondary-fixed: #dbe1ff;
+  --color-badge-note-bg: #fef3c7;
+  --color-surface-bright: #f8f9ff;
+  --color-on-primary-fixed: #001b3d;
+  --color-tertiary-container: #3d1500;
+  --color-on-surface-variant: #44474e;
+  --color-outline: #74777f;
+  --color-on-secondary-fixed-variant: #003ea8;
+  --color-on-tertiary-container: #b97958;
+  --color-on-background: #0b1c30;
+  --color-outline-variant: #c4c6cf;
+  --color-on-tertiary: #ffffff;
+  --color-surface-container-high: #dce9ff;
+  --color-on-primary-fixed-variant: #2d476f;
+  --color-primary-container: #002147;
+  --color-primary-fixed-dim: #aec7f6;
+  --color-surface: #f8f9ff;
+  --color-on-primary-container: #708ab5;
+  --color-badge-exam-fg: #065f46;
+  --color-on-error-container: #93000a;
+  --color-on-secondary-fixed: #00174b;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-surface-container: #e5eeff;
+  --color-badge-exam-bg: #d1fae5;
+  --color-badge-lab-fg: #6b21a8;
+  --color-surface-tint: #465f88;
+  --color-surface-dim: #cbdbf5;
+  --color-tertiary-fixed-dim: #ffb691;
+  --color-secondary: #0051d5;
+  --color-primary: #000a1e;
+  --color-surface-variant: #d3e4fe;
+  --color-background: #f8f9ff;
+  --color-surface-card: #ffffff;
+  --color-surface-canvas: #f8fafc;
+  --color-badge-lab-bg: #f3e8ff;
+  --color-tertiary: #180500;
+  --color-tertiary-fixed: #ffdbcb;
+  --color-inverse-surface: #213145;
+  --color-surface-container-low: #eff4ff;
+  --color-badge-note-fg: #92400e;
+  --color-on-surface: #0b1c30;
+  --color-inverse-on-surface: #eaf1ff;
+  --color-surface-container-highest: #d3e4fe;
+
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-headline-lg: "Inter", system-ui, sans-serif;
+  --font-headline-md: "Inter", system-ui, sans-serif;
+  --font-headline-sm: "Inter", system-ui, sans-serif;
+  --font-title: "Inter", system-ui, sans-serif;
+  --font-body-lg: "Inter", system-ui, sans-serif;
+  --font-body-md: "Inter", system-ui, sans-serif;
+  --font-body-sm: "Inter", system-ui, sans-serif;
+  --font-label-md: "Inter", system-ui, sans-serif;
+  --font-label-sm: "Inter", system-ui, sans-serif;
+
+  --text-display: 2.5rem;
+  --text-headline-lg: 2rem;
+  --text-headline-md: 1.5rem;
+  --text-headline-sm: 1.25rem;
+  --text-title: 1.125rem;
+  --text-body-lg: 1rem;
+  --text-body-md: 0.875rem;
+  --text-body-sm: 0.75rem;
+  --text-label-md: 0.875rem;
+  --text-label-sm: 0.75rem;
+
+  --spacing-space-2xs: 0.25rem;
+  --spacing-space-xs: 0.5rem;
+  --spacing-space-sm: 0.75rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2rem;
+  --spacing-space-2xl: 3rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-margin-desktop: 2rem;
+  --spacing-margin-mobile: 1rem;
+
+  --radius-sm: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    overscroll-behavior: none;
+    font-family: var(--font-body-md);
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  #root {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+}

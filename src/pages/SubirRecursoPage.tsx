@@ -13,7 +13,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { materiasService } from '@/services/materias.service'
 import { coleccionesService } from '@/services/colecciones.service'
 import { api } from '@/lib/api'
-import { cn, extractErrorMessage } from '@/lib/utils'
+import { cn, extractErrorMessage, matchesSearch } from '@/lib/utils'
 import {
   loadDraftFile,
   removeDraftFile,
@@ -376,20 +376,15 @@ export default function SubirRecursoPage() {
     setMateriaOpen(false)
   }
 
-  const q = searchTerm.trim().toLowerCase()
-  // Filtrado local (in-memory): se deriva de searchTerm + data con .filter().
-  // Ninguna petición al backend ocurre mientras el usuario escribe.
   const filteredMaterias = useMemo(() => {
-    if (!q) return data
-    return data.filter(
-      (m) =>
-        m.nombre.toLowerCase().includes(q) ||
-        m.codigo.toLowerCase().includes(q) ||
-        (m.carreras_list ?? []).some((c) =>
-          c.nombre.toLowerCase().includes(q)
-        )
+    return data.filter((materia) =>
+      matchesSearch(searchTerm, [
+        materia.nombre,
+        materia.codigo,
+        ...(materia.carreras_list ?? []).map((carrera) => carrera.nombre),
+      ])
     )
-  }, [data, q])
+  }, [data, searchTerm])
 
   return (
     <main className="min-h-screen bg-surface px-4 py-8">

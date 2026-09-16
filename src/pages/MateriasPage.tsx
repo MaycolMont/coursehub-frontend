@@ -213,12 +213,6 @@ export default function MateriasPage() {
                   <span className="inline-flex items-center rounded-lg bg-surface-container-low px-2.5 py-1 font-mono text-label-sm font-semibold tracking-tight text-secondary">
                     {materia.codigo}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-low px-2.5 py-1 text-body-sm font-medium text-on-surface-variant">
-                    <span className="material-symbols-outlined text-[16px]">
-                      description
-                    </span>
-                    {formatNumber(materia.recursos_count ?? 0)}
-                  </span>
                 </div>
 
                 <h3 className="font-title font-bold text-on-surface group-hover:text-secondary">

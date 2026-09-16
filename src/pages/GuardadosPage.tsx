@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Recurso } from '@/types'
 import { usuariosService } from '@/services/usuarios.service'
 import ResourceCard from '@/components/ui/ResourceCard'
 import ResourcePreviewModal from '@/components/ui/ResourcePreviewModal'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { usePagination } from '@/hooks/usePagination'
+
+const PER_PAGE = 12
 
 export default function GuardadosPage() {
   const [guardados, setGuardados] = useState<Recurso[]>([])
   const [loading, setLoading] = useState(true)
   const [previewRecurso, setPreviewRecurso] = useState<Recurso | null>(null)
+  const { page, prevPage, nextPage, setPage, resetPage } = usePagination()
 
   const fetchGuardados = useCallback(() => {
     let active = true
@@ -32,6 +36,21 @@ export default function GuardadosPage() {
   useEffect(() => {
     return fetchGuardados()
   }, [fetchGuardados])
+
+  useEffect(() => {
+    resetPage()
+  }, [guardados.length, resetPage])
+
+  const totalPages = Math.max(1, Math.ceil(guardados.length / PER_PAGE))
+  const visibleGuardados = guardados.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1)
+    }
+
+    const start = Math.max(1, Math.min(page - 3, totalPages - 6))
+    return Array.from({ length: 7 }, (_, index) => start + index)
+  }, [page, totalPages])
 
   const handleClosePreview = () => {
     setPreviewRecurso(null)
@@ -84,7 +103,7 @@ export default function GuardadosPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {guardados.map((recurso) => (
+            {visibleGuardados.map((recurso) => (
               <ResourceCard
                 key={recurso.id}
                 recurso={recurso}
@@ -92,6 +111,56 @@ export default function GuardadosPage() {
               />
             ))}
           </div>
+        )}
+
+        {totalPages > 1 && (
+          <nav
+            aria-label="Paginación de recursos guardados"
+            className="mt-10 flex flex-col items-center gap-3"
+          >
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={prevPage}
+                disabled={page === 1}
+                aria-label="Página anterior"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-surface-container-high bg-surface-card text-on-surface transition-colors hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  chevron_left
+                </span>
+              </button>
+              {pageNumbers.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setPage(pageNumber)}
+                  aria-current={page === pageNumber ? 'page' : undefined}
+                  className={
+                    page === pageNumber
+                      ? 'h-10 w-10 rounded-full bg-secondary text-body-sm font-medium text-white'
+                      : 'h-10 w-10 rounded-full bg-surface-card text-body-sm font-medium text-on-surface ring-1 ring-surface-container-high transition-colors hover:text-secondary'
+                  }
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={nextPage}
+                disabled={page === totalPages}
+                aria-label="Página siguiente"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-surface-container-high bg-surface-card text-on-surface transition-colors hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  chevron_right
+                </span>
+              </button>
+            </div>
+            <p className="text-body-sm text-on-surface-variant">
+              Página {page} de {totalPages}
+            </p>
+          </nav>
         )}
       </div>
 

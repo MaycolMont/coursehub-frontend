@@ -4,6 +4,9 @@ import type { Facultad, Materia } from '@/types'
 import { facultadesService } from '@/services/facultades.service'
 import { materiasService } from '@/services/materias.service'
 import { formatNumber } from '@/lib/utils'
+import { usePagination } from '@/hooks/usePagination'
+
+const PER_PAGE = 12
 
 export default function MateriasPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -15,6 +18,7 @@ export default function MateriasPage() {
   const [data, setData] = useState<Materia[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const { page, prevPage, nextPage, setPage, resetPage } = usePagination()
 
   useEffect(() => {
     facultadesService
@@ -73,6 +77,21 @@ export default function MateriasPage() {
       return matchesSearch && matchesFacultad
     })
   }, [activeFacultad, data, searchInput])
+
+  useEffect(() => {
+    resetPage()
+  }, [activeFacultad, resetPage, searchInput])
+
+  const totalPages = Math.max(1, Math.ceil(materias.length / PER_PAGE))
+  const visibleMaterias = materias.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1)
+    }
+
+    const start = Math.max(1, Math.min(page - 3, totalPages - 6))
+    return Array.from({ length: 7 }, (_, index) => start + index)
+  }, [page, totalPages])
 
   const handleFacultadChange = (value: string) => {
     setSearchParams((prev) => {
@@ -184,7 +203,7 @@ export default function MateriasPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {materias.map((materia) => (
+            {visibleMaterias.map((materia) => (
               <Link
                 key={materia.id}
                 to={`/materia/${materia.id}`}
@@ -221,6 +240,56 @@ export default function MateriasPage() {
               </Link>
             ))}
           </div>
+        )}
+
+        {totalPages > 1 && (
+          <nav
+            aria-label="Paginación de materias"
+            className="mt-10 flex flex-col items-center gap-3"
+          >
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={prevPage}
+                disabled={page === 1}
+                aria-label="Página anterior"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-surface-container-high bg-surface-card text-on-surface transition-colors hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  chevron_left
+                </span>
+              </button>
+              {pageNumbers.map((pageNumber) => (
+                <button
+                  key={pageNumber}
+                  type="button"
+                  onClick={() => setPage(pageNumber)}
+                  aria-current={page === pageNumber ? 'page' : undefined}
+                  className={
+                    page === pageNumber
+                      ? 'h-10 w-10 rounded-full bg-secondary text-body-sm font-medium text-white'
+                      : 'h-10 w-10 rounded-full bg-surface-card text-body-sm font-medium text-on-surface ring-1 ring-surface-container-high transition-colors hover:text-secondary'
+                  }
+                >
+                  {pageNumber}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={nextPage}
+                disabled={page === totalPages}
+                aria-label="Página siguiente"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-surface-container-high bg-surface-card text-on-surface transition-colors hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="material-symbols-outlined text-[20px]">
+                  chevron_right
+                </span>
+              </button>
+            </div>
+            <p className="text-body-sm text-on-surface-variant">
+              Página {page} de {totalPages}
+            </p>
+          </nav>
         )}
       </div>
     </main>

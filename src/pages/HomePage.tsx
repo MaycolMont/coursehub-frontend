@@ -156,6 +156,11 @@ export default function HomePage() {
     return recursos.filter((r) => r.categoria === trendingTab)
   }, [recursos, trendingTab])
 
+  const materiaNames = useMemo(
+    () => new Map(materias.map((materia) => [materia.id, materia.nombre])),
+    [materias]
+  )
+
   return (
     <main className="min-h-screen bg-surface text-on-surface">
       {/* Hero */}
@@ -417,6 +422,14 @@ export default function HomePage() {
                 <ResourceCard
                   key={recurso.id}
                   recurso={recurso}
+                  materiaNombre={
+                    recurso.materia_nombre ??
+                    (recurso.materia != null
+                      ? materiaNames.get(recurso.materia)
+                      : recurso.materia_id != null
+                        ? materiaNames.get(recurso.materia_id)
+                        : undefined)
+                  }
                   onOpen={(r) => setPreviewRecurso(r)}
                 />
               ))}

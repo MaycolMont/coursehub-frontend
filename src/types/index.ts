@@ -81,6 +81,8 @@ export interface Recurso {
   id: number
   nombre_archivo: string
   storage_key: string
+  materia?: number
+  materia_id?: number
   categoria: 'nota' | 'prueba' | 'proyecto'
   tipo_recurso: 'pdf' | 'zip' | 'link'
   usuario?: number

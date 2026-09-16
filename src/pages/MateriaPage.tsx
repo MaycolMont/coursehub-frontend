@@ -405,6 +405,7 @@ export default function MateriaPage() {
               <ResourceCard
                 key={recurso.id}
                 recurso={recurso}
+                materiaNombre={materia.nombre}
                 onOpen={(r) => setRecursoPreview(r)}
               />
             ))}

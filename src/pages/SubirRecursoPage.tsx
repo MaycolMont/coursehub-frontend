@@ -8,11 +8,10 @@ import {
   type DragEvent,
 } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import type { Materia, Coleccion, Recurso } from '@/types'
+import type { Materia, Recurso } from '@/types'
 import { useAuth } from '@/hooks/useAuth'
 import { materiasService } from '@/services/materias.service'
-import { coleccionesService } from '@/services/colecciones.service'
-import { api } from '@/lib/api'
+import { recursosService } from '@/services/recursos.service'
 import { cn, extractErrorMessage, matchesSearch } from '@/lib/utils'
 import {
   loadDraftFile,
@@ -30,13 +29,33 @@ const CATEGORIAS = [
 
 const TIPOS_RECURSO = [
   { value: 'pdf', label: 'PDF', accept: '.pdf' },
-  { value: 'zip', label: 'ZIP', accept: '.zip,.rar,.7z' },
   { value: 'link', label: 'Enlace', accept: '' },
 ] as const
 
 interface RecursoCreado extends Recurso {
   karma_ganado?: number
   karma_acumulado?: number
+}
+
+type FieldErrorKey = 'materia_id' | 'archivo' | 'storage_key'
+type FieldErrors = Partial<Record<FieldErrorKey, string>>
+
+function firstError(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value) && value.length > 0) return firstError(value[0])
+  return undefined
+}
+
+function getFieldErrors(err: unknown): FieldErrors {
+  const body = (err as { response?: { data?: unknown } })?.response?.data
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {}
+
+  const errors: FieldErrors = {}
+  for (const key of ['materia_id', 'archivo', 'storage_key'] as const) {
+    const message = firstError((body as Record<string, unknown>)[key])
+    if (message) errors[key] = message
+  }
+  return errors
 }
 
 const CATEGORIA_LABEL: Record<string, string> = {
@@ -49,7 +68,6 @@ const DRAFT_KEY = 'coursehub_subir_draft'
 
 interface SubirDraft {
   materiaId: string
-  coleccionId: string
   categoria: string
   tipoRecurso: string
   descripcion: string
@@ -61,7 +79,6 @@ interface SubirDraft {
 
 const EMPTY_DRAFT: SubirDraft = {
   materiaId: '',
-  coleccionId: '',
   categoria: 'nota',
   tipoRecurso: 'pdf',
   descripcion: '',
@@ -79,7 +96,6 @@ function readDraft(): SubirDraft {
     const materiaSeleccionada = d.materiaSeleccionada ?? null
     return {
       materiaId: d.materiaId ?? '',
-      coleccionId: d.coleccionId ?? '',
       categoria: d.categoria ?? 'nota',
       tipoRecurso: d.tipoRecurso ?? 'pdf',
       descripcion: d.descripcion ?? '',
@@ -104,7 +120,6 @@ export default function SubirRecursoPage() {
   const [draft] = useState<SubirDraft>(readDraft)
 
   const [data, setData] = useState<Materia[]>([])
-  const [colecciones, setColecciones] = useState<Coleccion[]>([])
   const [loading, setLoading] = useState(true)
   const [materiasError, setMateriasError] = useState('')
 
@@ -115,7 +130,6 @@ export default function SubirRecursoPage() {
   const materiaRef = useRef<HTMLDivElement>(null)
 
   const [materiaId, setMateriaId] = useState(draft.materiaId)
-  const [coleccionId, setColeccionId] = useState(draft.coleccionId)
   const [categoria, setCategoria] = useState<string>(draft.categoria)
   const [tipoRecurso, setTipoRecurso] = useState<string>(draft.tipoRecurso)
   const [descripcion, setDescripcion] = useState(draft.descripcion)
@@ -126,15 +140,16 @@ export default function SubirRecursoPage() {
   const [isDragging, setIsDragging] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [success, setSuccess] = useState(false)
   const [recursoCreado, setRecursoCreado] = useState<RecursoCreado | null>(null)
+  const submitInFlightRef = useRef(false)
 
   const persistDraft = useCallback(async () => {
     sessionStorage.setItem(
       DRAFT_KEY,
       JSON.stringify({
         materiaId,
-        coleccionId,
         categoria,
         tipoRecurso,
         descripcion,
@@ -156,7 +171,6 @@ export default function SubirRecursoPage() {
     }
   }, [
     materiaId,
-    coleccionId,
     categoria,
     tipoRecurso,
     descripcion,
@@ -226,28 +240,6 @@ export default function SubirRecursoPage() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!materiaId) {
-      // Reset derived selection state when the selected materia changes
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setColecciones([])
-      setColeccionId('')
-      return
-    }
-    let active = true
-    coleccionesService
-      .list({ materia_id: Number(materiaId) })
-      .then((data) => {
-        if (active) setColecciones(data.results)
-      })
-      .catch(() => {
-        if (active) setColecciones([])
-      })
-    return () => {
-      active = false
-    }
-  }, [materiaId])
-
   const handleDragOver = (e: DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -278,7 +270,9 @@ export default function SubirRecursoPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (submitInFlightRef.current) return
     setError('')
+    setFieldErrors({})
     setSuccess(false)
 
     if (!isAuthenticated) {
@@ -288,25 +282,26 @@ export default function SubirRecursoPage() {
     }
 
     if (!materiaId) {
-      setError('Selecciona una materia.')
+      setFieldErrors({ materia_id: 'Selecciona una materia.' })
       return
     }
 
+    const selectedMateriaId = Number(materiaId)
     if (tipoRecurso !== 'link' && !file) {
-      setError('Selecciona un archivo para subir.')
+      setFieldErrors({ archivo: 'Selecciona un archivo para subir.' })
       return
     }
 
     if (tipoRecurso === 'link' && !linkUrl.trim()) {
-      setError('Ingresa la URL del enlace.')
+      setFieldErrors({ storage_key: 'Ingresa la URL del enlace.' })
       return
     }
 
+    submitInFlightRef.current = true
     setIsSubmitting(true)
     try {
       const formData = new FormData()
-      formData.append('materia', materiaId)
-      if (coleccionId) formData.append('coleccion', coleccionId)
+      formData.append('materia_id', String(selectedMateriaId))
       formData.append('categoria', categoria)
       formData.append('tipo_recurso', tipoRecurso)
       if (descripcion) formData.append('descripcion', descripcion)
@@ -318,21 +313,22 @@ export default function SubirRecursoPage() {
         formData.append('archivo', file)
       }
 
-      const { data: creado } = await api.post<RecursoCreado>(
-        '/api/recursos/',
-        formData,
-        {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        }
-      )
+      const creado = await recursosService.create(formData)
 
-      setRecursoCreado(creado)
+      await recursosService.list({ materia_id: selectedMateriaId })
+
+      setRecursoCreado(creado as RecursoCreado)
       setSuccess(true)
       clearDraft()
       void refreshProfile().catch(() => undefined)
     } catch (err: unknown) {
-      setError(extractErrorMessage(err, 'Error al subir el recurso. Intenta de nuevo.'))
+      const nextFieldErrors = getFieldErrors(err)
+      setFieldErrors(nextFieldErrors)
+      if (Object.keys(nextFieldErrors).length === 0) {
+        setError(extractErrorMessage(err, 'Error al subir el recurso. Intenta de nuevo.'))
+      }
     } finally {
+      submitInFlightRef.current = false
       setIsSubmitting(false)
     }
   }
@@ -345,7 +341,6 @@ export default function SubirRecursoPage() {
     setSearchTerm('')
     setMateriaSeleccionada(null)
     setMateriaOpen(false)
-    setColeccionId('')
     setCategoria('nota')
     setTipoRecurso('pdf')
     setDescripcion('')
@@ -353,6 +348,7 @@ export default function SubirRecursoPage() {
     setFile(null)
     setLinkUrl('')
     setError('')
+    setFieldErrors({})
   }
 
   const handleMateriaQueryChange = (value: string) => {
@@ -589,32 +585,10 @@ export default function SubirRecursoPage() {
                   · {materiaSeleccionada.nombre}
                 </p>
               )}
+              {fieldErrors.materia_id && (
+                <p className="mt-1.5 text-body-sm text-error">{fieldErrors.materia_id}</p>
+              )}
             </div>
-
-            {/* Coleccion */}
-            {materiaId && colecciones.length > 0 && (
-              <div>
-                <label
-                  htmlFor="coleccion"
-                  className="mb-1.5 block text-label-md font-medium text-on-surface"
-                >
-                  Colección
-                </label>
-                <select
-                  id="coleccion"
-                  value={coleccionId}
-                  onChange={(e) => setColeccionId(e.target.value)}
-                  className="w-full rounded-xl border border-border-subtle bg-surface px-4 py-3 text-body-md text-on-surface outline-none transition-colors focus:border-secondary"
-                >
-                  <option value="">Sin colección específica</option>
-                  {colecciones.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.titulo}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             {/* Categoria */}
             <div>
@@ -666,7 +640,7 @@ export default function SubirRecursoPage() {
                     )}
                   >
                     <span className="material-symbols-outlined text-[18px]">
-                      {tipo.value === 'link' ? 'link' : tipo.value === 'pdf' ? 'picture_as_pdf' : 'folder_zip'}
+                      {tipo.value === 'link' ? 'link' : 'picture_as_pdf'}
                     </span>
                     {tipo.label}
                   </button>
@@ -691,11 +665,17 @@ export default function SubirRecursoPage() {
                     id="link_url"
                     type="url"
                     value={linkUrl}
-                    onChange={(e) => setLinkUrl(e.target.value)}
+                    onChange={(e) => {
+                      setLinkUrl(e.target.value)
+                      setFieldErrors((current) => ({ ...current, storage_key: undefined }))
+                    }}
                     placeholder="https://drive.google.com/..."
                     className="w-full rounded-xl border border-border-subtle bg-surface py-3 pl-10 pr-4 text-body-md text-on-surface outline-none transition-colors placeholder:text-on-surface-variant focus:border-secondary"
                   />
                 </div>
+                {fieldErrors.storage_key && (
+                  <p className="mt-1.5 text-body-sm text-error">{fieldErrors.storage_key}</p>
+                )}
               </div>
             ) : (
               <div>
@@ -762,10 +742,16 @@ export default function SubirRecursoPage() {
                   accept={acceptedTypes?.accept}
                   onChange={(e) => {
                     const selected = e.target.files?.[0]
-                    if (selected) handleFileSelect(selected)
+                    if (selected) {
+                      setFieldErrors((current) => ({ ...current, archivo: undefined }))
+                      handleFileSelect(selected)
+                    }
                   }}
                   className="hidden"
                 />
+                {fieldErrors.archivo && (
+                  <p className="mt-1.5 text-body-sm text-error">{fieldErrors.archivo}</p>
+                )}
               </div>
             )}
 

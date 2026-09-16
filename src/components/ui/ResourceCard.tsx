@@ -14,10 +14,19 @@ interface ResourceCardProps {
   onPreview?: (resource: Recurso) => void
   onSave?: (resource: Recurso) => void
   onOpen?: (resource: Recurso) => void
+  materiaNombre?: string
   className?: string
 }
 
-function ResourceCardInner({ resource, recurso, onPreview, onSave, onOpen, className }: ResourceCardProps) {
+function ResourceCardInner({
+  resource,
+  recurso,
+  onPreview,
+  onSave,
+  onOpen,
+  materiaNombre,
+  className,
+}: ResourceCardProps) {
   const resolved = resource ?? recurso
   if (!resolved) return null
 
@@ -49,9 +58,9 @@ function ResourceCardInner({ resource, recurso, onPreview, onSave, onOpen, class
         {resolved.nombre_archivo}
       </h3>
 
-      {resolved.materia_nombre && (
+      {(resolved.materia_nombre ?? materiaNombre) && (
         <p className="text-body-sm text-on-surface-variant mb-1">
-          {resolved.materia_nombre}
+          {resolved.materia_nombre ?? materiaNombre}
         </p>
       )}
 

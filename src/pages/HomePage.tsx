@@ -6,6 +6,15 @@ import { materiasService } from '@/services/materias.service'
 import { cn, matchesSearch } from '@/lib/utils'
 import ResourceCard from '@/components/ui/ResourceCard'
 import ResourcePreviewModal from '@/components/ui/ResourcePreviewModal'
+import evidencia1 from '@/assets/evidencias/evidencia1.jpeg'
+import evidencia2 from '@/assets/evidencias/evidencia2.jpeg'
+import evidencia3 from '@/assets/evidencias/evidencia3.jpeg'
+import evidencia4 from '@/assets/evidencias/evidencia4.jpeg'
+import evidencia5 from '@/assets/evidencias/evidencia5.jpeg'
+import evidencia6 from '@/assets/evidencias/evidencia6.jpeg'
+import evidencia7 from '@/assets/evidencias/evidencia7.jpeg'
+import evidencia8 from '@/assets/evidencias/evidencia8.jpeg'
+import evidencia9 from '@/assets/evidencias/evidencia9.jpeg'
 
 const QUICK_FILTERS = [
   'Cálculo',
@@ -20,6 +29,18 @@ const TRENDING_TABS = [
   { id: 'nota', label: 'Guías y Talleres' },
   { id: 'proyecto', label: 'Proyectos' },
 ] as const
+
+const EVIDENCE_IMAGES = [
+  evidencia1,
+  evidencia2,
+  evidencia3,
+  evidencia4,
+  evidencia5,
+  evidencia6,
+  evidencia7,
+  evidencia8,
+  evidencia9,
+]
 
 function SearchIcon({ className }: { className?: string }) {
   return (
@@ -86,6 +107,7 @@ export default function HomePage() {
   const [recursos, setRecursos] = useState<Recurso[]>([])
   const [recursosLoading, setRecursosLoading] = useState(true)
   const [previewRecurso, setPreviewRecurso] = useState<Recurso | null>(null)
+  const [evidenceIndex, setEvidenceIndex] = useState(0)
 
   const handleLoginPrompt = () => {
     window.location.href = '/login'
@@ -132,6 +154,18 @@ export default function HomePage() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setEvidenceIndex((current) => (current + 1) % EVIDENCE_IMAGES.length)
+    }, 5000)
+
+    return () => window.clearInterval(interval)
+  }, [])
+
+  const showEvidence = (index: number) => {
+    setEvidenceIndex((index + EVIDENCE_IMAGES.length) % EVIDENCE_IMAGES.length)
+  }
 
   useEffect(() => {
     let active = true
@@ -345,19 +379,46 @@ export default function HomePage() {
           <div className="relative">
             <div className="absolute -inset-4 rounded-3xl bg-gradient-to-tr from-secondary/10 to-primary-container/10 blur-2xl" />
             <div className="relative overflow-hidden rounded-3xl bg-surface-container">
-              <div className="flex aspect-[4/3] items-center justify-center bg-gradient-to-br from-surface-container-high to-secondary-container/20">
-                <svg
-                  viewBox="0 0 400 300"
-                  className="h-full w-full"
-                  aria-hidden="true"
+              <div className="relative aspect-[4/3] bg-surface-container-high">
+                <img
+                  src={EVIDENCE_IMAGES[evidenceIndex]}
+                  alt={`Evidencia de material compartido ${evidenceIndex + 1}`}
+                  className="h-full w-full object-cover transition-opacity duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/65 via-transparent to-transparent" />
+                <button
+                  type="button"
+                  onClick={() => showEvidence(evidenceIndex - 1)}
+                  aria-label="Ver evidencia anterior"
+                  className="absolute left-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-surface-card/90 text-on-surface shadow-md backdrop-blur transition-colors hover:bg-white"
                 >
-                  <rect width="400" height="300" fill="#e5eeff" />
-                  <circle cx="120" cy="150" r="40" fill="#b4c5ff" />
-                  <circle cx="200" cy="140" r="42" fill="#00e0c5" />
-                  <circle cx="285" cy="160" r="38" fill="#ffb691" />
-                  <rect x="60" y="60" width="280" height="14" rx="7" fill="#b4c5ff" />
-                  <rect x="60" y="90" width="220" height="10" rx="5" fill="#cbdffc" />
-                </svg>
+                  <span className="material-symbols-outlined">chevron_left</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => showEvidence(evidenceIndex + 1)}
+                  aria-label="Ver evidencia siguiente"
+                  className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-surface-card/90 text-on-surface shadow-md backdrop-blur transition-colors hover:bg-white"
+                >
+                  <span className="material-symbols-outlined">chevron_right</span>
+                </button>
+                <div className="absolute bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
+                  {EVIDENCE_IMAGES.map((_, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => showEvidence(index)}
+                      aria-label={`Mostrar evidencia ${index + 1}`}
+                      aria-current={index === evidenceIndex ? 'true' : undefined}
+                      className={cn(
+                        'h-2 rounded-full transition-all',
+                        index === evidenceIndex
+                          ? 'w-6 bg-white'
+                          : 'w-2 bg-white/60 hover:bg-white'
+                      )}
+                    />
+                  ))}
+                </div>
               </div>
               <div className="absolute inset-x-4 bottom-4 flex items-center justify-between rounded-xl bg-surface-card/90 px-4 py-3 backdrop-blur">
                 <span className="text-body-sm font-medium text-on-surface">
